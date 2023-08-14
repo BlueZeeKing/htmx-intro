@@ -1,0 +1,20 @@
+{% macro input(label, name) %}
+<label>
+    {{ label }}
+    <input name={{name}} type="text"
+        class="rounded bg-gray-200 m-2 px-4 p-2 outline-0 focus:outline-1 outline-offset-0 outline-gray-300" />
+</label>
+{% endmacro input %}
+
+{% macro submit(name="Submit") %}
+<input type="submit" value={{name}}
+    class="rounded bg-blue-500 text-white px-6 p-2 m-2 shadow hover:bg-blue-600 cursor-pointer" />
+{% endmacro input %}
+
+{% macro task(name, completed) %}
+<li class="flex">
+    <input type="checkbox" class="mr-2" checked=completed hx-post="/toggle" hx-trigger="change" hx-vals=data
+        hx-swap="outerHTML" hx-target="closest li" _="on change toggle @disabled until htmx:afterOnLoad" />
+    <p>{{name}}</p>
+</li>
+{% endmacro task %}

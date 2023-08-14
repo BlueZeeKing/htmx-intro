@@ -7,17 +7,22 @@ use std::{
 use axum::{
     extract::State,
     headers::Cookie,
-    http::{StatusCode, header::SET_COOKIE},
+    http::{header::SET_COOKIE, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
     Form, Router, TypedHeader,
 };
-use leptos::{component, ssr::render_to_string, view, IntoAttribute, IntoView, Scope, For};
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use tera::{Context, Tera};
 use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 
 type AppState = Arc<Mutex<HashMap<String, HashMap<String, bool>>>>;
+
+lazy_static! {
+    pub static ref TEMPLATES: Tera = Tera::new("templates/**/*.html").unwrap();
+}
 
 #[tokio::main]
 async fn main() {
@@ -40,62 +45,8 @@ async fn main() {
         .unwrap();
 }
 
-#[component]
-fn TextInput(cx: Scope, label: String, name: String) -> impl IntoView {
-    view! {cx,
-        <div>
-            <label for=name.clone()>{label}</label>
-            <input name=name.clone() id=name type="text" class="rounded bg-gray-200 m-2 px-4 p-2 outline-0 focus:outline-1 outline-offset-0 outline-gray-300" />
-        </div>
-    }
-}
-
-#[allow(unused_variables)]
-#[component]
-fn Button(cx: Scope, label: String) -> impl IntoView {
-    view! {cx,
-        <input type="submit" class="rounded bg-blue-500 text-white px-6 p-2 m-2 shadow hover:bg-blue-600 cursor-pointer">{label}</input>
-    }
-}
-
-#[component]
-fn Task(cx: Scope, name: String, completed: bool) -> impl IntoView {
-    let data = serde_json::to_string(&CheckedQuery {
-        task: name.clone(),
-        checked: completed
-    }).unwrap();
-
-    view! { cx,
-        <li class="flex">
-            <input type="checkbox" class="mr-2" checked=completed hx-post="/toggle" hx-trigger="change" hx-vals=data hx-swap="outerHTML" hx-target="closest li" _="on change toggle @disabled until htmx:afterOnLoad" />
-            <p>{name}</p>
-        </li>
-    }
-}
-
 async fn login() -> Html<String> {
-    Html(render_to_string(|cx| {
-        view! { cx,
-            <html>
-                <head>
-                    <title>Test</title>
-                    <script src="https://unpkg.com/htmx.org@1.9.4"></script>
-                    <script src="https://unpkg.com/hyperscript.org@0.9.11"></script>
-                    <link href="/public/out.css" rel="stylesheet" />
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                </head>
-
-                <body>
-                    <div class="p-24 bg-gray-50 absolute rounded shadow -translate-y-1/2 -translate-x-1/2 top-1/2 left-1/2 text-center">
-                        <form action="/submit-name" method="POST">
-                            <TextInput label="Your name:".to_owned() name="name".to_owned() />
-                            <Button label="Submit".to_owned() />
-                        </form>
-                    </div>
-                </body>
-            </html>
-        }
-    }))
+    Html(TEMPLATES.render("login.html", &Context::new()).unwrap())
 }
 
 async fn tasks(
@@ -108,44 +59,16 @@ async fn tasks(
         .get("TasksLoginName")
         .and_then(|name| state.get(name))
     {
-        tasks.to_owned()
+        tasks
     } else {
         return Redirect::to("/login").into_response();
     };
 
-    Html(render_to_string(|cx| {
-        view! { cx,
-            <html>
-                <head>
-                    <title>Test</title>
-                    <script src="https://unpkg.com/htmx.org@1.9.4"></script>
-                    <script src="https://unpkg.com/hyperscript.org@0.9.11"></script>
-                    <link href="/public/out.css" rel="stylesheet" />
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                </head>
+    let mut context = Context::new();
 
-                <body>
-                    <div class="p-4">
-                        <form hx-post="/add-task" hx-target="#list" hx-swap="beforeend" class="flex">
-                            <TextInput label="Task name:".to_owned() name="task".to_owned() />
-                            <Button label="Add".to_owned() />
-                        </form>
-                        <ul id="list">
-                            <For
-                                each=move || tasks.clone()
-                                key=move |(key, _)| key.clone()
-                                view=|cx, (key, val)| {
-                                    view! { cx, 
-                                        <Task name=key.to_owned() completed=val.to_owned() />
-                                    }
-                                }
-                            />
-                        </ul>
-                    </div>
-                </body>
-            </html>
-        }
-    })).into_response()
+    context.insert("tasks", tasks);
+
+    Html(TEMPLATES.render("index.html", &context).unwrap()).into_response()
 }
 
 #[derive(Deserialize)]
@@ -160,7 +83,19 @@ async fn submit(State(state): State<AppState>, Form(name): Form<NameQuery>) -> i
 
     drop(state);
 
-    ([(SET_COOKIE.as_str(), format!("TasksLoginName={};", name.name))], Redirect::to("/"))
+    (
+        [(
+            SET_COOKIE.as_str(),
+            format!("TasksLoginName={};", name.name),
+        )],
+        Redirect::to("/"),
+    )
+}
+
+#[derive(Serialize)]
+struct Task<'a> {
+    name: &'a str,
+    completed: bool,
 }
 
 #[derive(Deserialize)]
@@ -168,7 +103,11 @@ struct AddTaskQuery {
     task: String,
 }
 
-async fn add_task(State(state): State<AppState>, TypedHeader(cookies): TypedHeader<Cookie>, Form(task_name): Form<AddTaskQuery>) -> Response {
+async fn add_task(
+    State(state): State<AppState>,
+    TypedHeader(cookies): TypedHeader<Cookie>,
+    Form(task_name): Form<AddTaskQuery>,
+) -> Response {
     let mut state = state.lock().await;
 
     let tasks = if let Some(tasks) = cookies
@@ -191,21 +130,32 @@ async fn add_task(State(state): State<AppState>, TypedHeader(cookies): TypedHead
 
     drop(state);
 
-    Html(render_to_string(|cx| {
-        view! { cx,
-            <Task name=task_name.task completed=false />
-        }
-    }))
+    Html(
+        TEMPLATES
+            .render(
+                "partials/task.html",
+                &Context::from_serialize(Task {
+                    name: &task_name.task,
+                    completed: false,
+                })
+                .unwrap(),
+            )
+            .unwrap(),
+    )
     .into_response()
 }
 
 #[derive(Deserialize, Serialize)]
 struct CheckedQuery {
     task: String,
-    checked: bool
+    checked: bool,
 }
 
-async fn set_checked(State(state): State<AppState>, TypedHeader(cookies): TypedHeader<Cookie>, Form(check_info): Form<CheckedQuery>) -> Response {
+async fn set_checked(
+    State(state): State<AppState>,
+    TypedHeader(cookies): TypedHeader<Cookie>,
+    Form(check_info): Form<CheckedQuery>,
+) -> Response {
     let mut state = state.lock().await;
 
     let tasks = if let Some(tasks) = cookies
@@ -221,9 +171,17 @@ async fn set_checked(State(state): State<AppState>, TypedHeader(cookies): TypedH
 
     *tasks.get_mut(&check_info.task).unwrap() = new_checked;
 
-    Html(render_to_string(move |cx| {
-        view! { cx,
-            <Task name=check_info.task completed=new_checked />
-        }
-    })).into_response()
+    Html(
+        TEMPLATES
+            .render(
+                "partials/task.html",
+                &Context::from_serialize(Task {
+                    name: &check_info.task,
+                    completed: false,
+                })
+                .unwrap(),
+            )
+            .unwrap(),
+    )
+    .into_response()
 }

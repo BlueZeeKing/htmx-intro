@@ -1,0 +1,27 @@
+{% import "macros.html" as macros %}
+
+<html>
+
+<head>
+    <title>Test</title>
+    <script src="https://unpkg.com/htmx.org@1.9.4"></script>
+    <script src="https://unpkg.com/hyperscript.org@0.9.11"></script>
+    <link href="/public/out.css" rel="stylesheet" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</head>
+
+<body>
+    <div class="p-4">
+        <form hx-post="/add-task" hx-target="#list" hx-swap="beforeend" class="flex">
+            {{ macros::input(label="Task name:", name="task") }}
+            {{ macros::submit(name="Add") }}
+        </form>
+        <ul id="list">
+            {% for name, done in tasks %}
+            {{ macros::task(name=name, completed=done) }}
+            {% endfor %}
+        </ul>
+    </div>
+</body>
+
+</html>
