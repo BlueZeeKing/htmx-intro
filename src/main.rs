@@ -145,7 +145,7 @@ async fn add_task(
     .into_response()
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 struct CheckedQuery {
     task: String,
     checked: bool,
@@ -167,6 +167,8 @@ async fn set_checked(
         return StatusCode::UNAUTHORIZED.into_response();
     };
 
+    dbg!(&check_info);
+
     let new_checked = !check_info.checked;
 
     *tasks.get_mut(&check_info.task).unwrap() = new_checked;
@@ -177,7 +179,7 @@ async fn set_checked(
                 "partials/task.html",
                 &Context::from_serialize(Task {
                     name: &check_info.task,
-                    completed: false,
+                    completed: new_checked,
                 })
                 .unwrap(),
             )
