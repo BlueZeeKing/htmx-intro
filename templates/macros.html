@@ -27,7 +27,7 @@
             {% endif %}
             hx-post="/toggle"
             hx-trigger="change"
-            hx-vals="{&quot;task&quot;: {{name}}, &quot;checked&quot;: {{completed}}}"
+            hx-vals={{ to_struct(name=name, completed=completed) | json_encode() }}
             hx-swap="outerHTML"
             hx-target="closest li"
             hx-on="click: event.target.disabled = true"

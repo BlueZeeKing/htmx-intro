@@ -21,7 +21,21 @@ use tower_http::services::ServeDir;
 type AppState = Arc<Mutex<HashMap<String, HashMap<String, bool>>>>;
 
 lazy_static! {
-    pub static ref TEMPLATES: Tera = Tera::new("templates/**/*.html").unwrap();
+    pub static ref TEMPLATES: Tera = {
+        let mut tera = Tera::new("templates/**/*.html").unwrap();
+
+        tera.register_function("to_struct", make_to_struct());
+
+        tera
+    };
+}
+
+fn make_to_struct() -> impl tera::Function {
+    Box::new(
+        move |args: &HashMap<String, serde_json::Value>| -> tera::Result<serde_json::Value> {
+            Ok(serde_json::to_value(args)?)
+        },
+    )
 }
 
 #[tokio::main]
@@ -147,8 +161,8 @@ async fn add_task(
 
 #[derive(Deserialize, Serialize, Debug)]
 struct CheckedQuery {
-    task: String,
-    checked: bool,
+    name: String,
+    completed: bool,
 }
 
 async fn set_checked(
@@ -167,18 +181,16 @@ async fn set_checked(
         return StatusCode::UNAUTHORIZED.into_response();
     };
 
-    dbg!(&check_info);
+    let new_checked = !check_info.completed;
 
-    let new_checked = !check_info.checked;
-
-    *tasks.get_mut(&check_info.task).unwrap() = new_checked;
+    *tasks.get_mut(&check_info.name).unwrap() = new_checked;
 
     Html(
         TEMPLATES
             .render(
                 "partials/task.html",
                 &Context::from_serialize(Task {
-                    name: &check_info.task,
+                    name: &check_info.name,
                     completed: new_checked,
                 })
                 .unwrap(),
