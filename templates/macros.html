@@ -22,6 +22,8 @@
         <input
             type="checkbox"
             class="mr-2"
+            aria-labelledby="check or uncheck {{name}}"
+
             {% if completed %}
                 checked
             {% endif %}

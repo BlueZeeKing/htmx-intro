@@ -35,9 +35,7 @@ lazy_static! {
 fn make_to_struct_json() -> impl tera::Function {
     Box::new(
         move |args: &HashMap<String, serde_json::Value>| -> tera::Result<serde_json::Value> {
-            Ok(serde_json::Value::String(dbg!(serde_json::to_string(
-                args
-            )?)))
+            Ok(serde_json::Value::String(serde_json::to_string(args)?))
         },
     )
 }

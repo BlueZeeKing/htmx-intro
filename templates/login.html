@@ -1,22 +1,12 @@
 {% import "macros.html" as macros %}
+{% extends "base.html" %}
 
-<html>
-
-<head>
-    <title>Test</title>
-    <script src="https://unpkg.com/htmx.org@1.9.4"></script>
-    <link href="/public/out.css" rel="stylesheet" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-
-<body>
-    <div class="p-24 bg-gray-50 absolute rounded shadow -translate-y-1/2 -translate-x-1/2 top-1/2 left-1/2 text-center">
-        <form action="/submit-name" method="POST">
-            {{ macros::input(label="Your name:", name="name") }}
-            <br />
-            {{ macros::submit() }}
-        </form>
-    </div>
-</body>
-
-</html>
+{% block body %}
+<div class="p-24 bg-gray-50 absolute rounded shadow -translate-y-1/2 -translate-x-1/2 top-1/2 left-1/2 text-center">
+    <form action="/submit-name" method="POST">
+        {{ macros::input(label="Your name:", name="name") }}
+        <br />
+        {{ macros::submit() }}
+    </form>
+</div>
+{% endblock body %}

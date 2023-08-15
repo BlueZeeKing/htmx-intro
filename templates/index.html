@@ -1,37 +1,27 @@
 {% import "macros.html" as macros %}
+{% extends "base.html" %}
 
-<html>
-
-<head>
-    <title>Test</title>
-    <script src="https://unpkg.com/htmx.org@1.9.4"></script>
-    <link href="/public/out.css" rel="stylesheet" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-</head>
-
-<body>
-    <div class="p-4">
-        <form hx-post="/add-task" hx-target="#incomplete-list" hx-swap="beforeend" class="flex" hx-on="clear-task-form: event.target.reset()">
-            {{ macros::input(label="Task name:", name="task") }}
-            {{ macros::submit(name="Add") }}
-        </form>
-        <h1 class="mt-4 mb-2 text-lg">Incomplete</h1>
-        <ul id="incomplete-list" hx-get="/tasks?completed=false" hx-trigger="reload-incompleted from:body" class="min-h-[15rem]">
-            {% for task in tasks %}
-                {% if not task.1 %}
-                    {{ macros::task(name=task.0, completed=task.1) }}
-                {% endif %}
-            {% endfor %}
-        </ul>
-        <h2 class="mt-4 mb-2 text-lg">Complete</h2>
-        <ul id="complete-list" hx-get="/tasks?completed=true" hx-trigger="reload-completed from:body" class="min-h-[15rem]">
-            {% for task in tasks %}
-                {% if task.1 %}
-                    {{ macros::task(name=task.0, completed=task.1) }}
-                {% endif %}
-            {% endfor %}
-        </ul>
-    </div>
-</body>
-
-</html>
+{% block body %}
+<div class="p-4">
+    <form hx-post="/add-task" hx-target="#incomplete-list" hx-swap="beforeend" class="flex" hx-on="clear-task-form: event.target.reset()">
+        {{ macros::input(label="Task name:", name="task") }}
+        {{ macros::submit(name="Add") }}
+    </form>
+    <h1 class="mt-4 mb-2 text-lg">Incomplete</h1>
+    <ul id="incomplete-list" hx-get="/tasks?completed=false" hx-trigger="reload-incompleted from:body" class="min-h-[15rem]">
+        {% for task in tasks %}
+            {% if not task.1 %}
+                {{ macros::task(name=task.0, completed=task.1) }}
+            {% endif %}
+        {% endfor %}
+    </ul>
+    <h2 class="mt-4 mb-2 text-lg">Complete</h2>
+    <ul id="complete-list" hx-get="/tasks?completed=true" hx-trigger="reload-completed from:body" class="min-h-[15rem]">
+        {% for task in tasks %}
+            {% if task.1 %}
+                {{ macros::task(name=task.0, completed=task.1) }}
+            {% endif %}
+        {% endfor %}
+    </ul>
+</div>
+{% endblock body %}

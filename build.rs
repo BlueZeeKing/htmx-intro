@@ -2,7 +2,7 @@ use std::{env, ffi::OsStr, path::Path, process::Command};
 
 fn main() {
     let path = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let dir = dbg!(Path::new(&path));
+    let dir = Path::new(&path);
 
     let mut command = Command::new("tailwindcss");
 
