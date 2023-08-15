@@ -25,13 +25,26 @@
             {% if completed %}
                 checked
             {% endif %}
-            hx-post="/toggle"
+
+            hx-put="/toggle"
             hx-trigger="change"
-            hx-vals={{ to_struct(name=name, completed=completed) | json_encode() }}
-            hx-swap="outerHTML"
-            hx-target="closest li"
+            hx-vals="{{ to_struct_json(name=name, completed=completed) }}"
             hx-on="click: event.target.disabled = true"
+
+            hx-swap="delete"
+            hx-target="closest li"
         />
-        <p>{{name}}</p>
+        <p
+            class="{% if completed %}line-through decoration-black text-gray-400{% endif %}"
+
+            {% if completed %}
+            hx-delete="/delete"
+            hx-trigger="dblclick"
+            hx-confirm="Are you sure you want to delete?"
+            hx-vals="{{ to_struct_json(name=name, completed=completed) }}"
+            {% endif %}
+        >
+            {{name}}
+        </p>
     </li>
 {% endmacro task %}

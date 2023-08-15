@@ -2,38 +2,42 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     net::SocketAddr,
     sync::Arc,
+    time::Instant,
 };
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     headers::Cookie,
     http::{header::SET_COOKIE, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Form, Router, TypedHeader,
 };
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use tera::{Context, Tera};
 use tokio::sync::Mutex;
-use tower_http::services::ServeDir;
+use tower::ServiceBuilder;
+use tower_http::{compression::CompressionLayer, services::ServeDir};
 
-type AppState = Arc<Mutex<HashMap<String, HashMap<String, bool>>>>;
+type AppState = Arc<Mutex<HashMap<String, HashMap<String, (bool, Instant)>>>>;
 
 lazy_static! {
     pub static ref TEMPLATES: Tera = {
         let mut tera = Tera::new("templates/**/*.html").unwrap();
 
-        tera.register_function("to_struct", make_to_struct());
+        tera.register_function("to_struct_json", make_to_struct_json());
 
         tera
     };
 }
 
-fn make_to_struct() -> impl tera::Function {
+fn make_to_struct_json() -> impl tera::Function {
     Box::new(
         move |args: &HashMap<String, serde_json::Value>| -> tera::Result<serde_json::Value> {
-            Ok(serde_json::to_value(args)?)
+            Ok(serde_json::Value::String(dbg!(serde_json::to_string(
+                args
+            )?)))
         },
     )
 }
@@ -47,8 +51,11 @@ async fn main() {
         .route("/login", get(login))
         .route("/submit-name", post(submit))
         .route("/add-task", post(add_task))
-        .route("/toggle", post(set_checked))
+        .route("/toggle", put(set_checked))
+        .route("/tasks", get(get_tasks))
+        .route("/delete", delete(delete_task))
         .nest_service("/public", ServeDir::new("public"))
+        .layer(ServiceBuilder::new().layer(CompressionLayer::new()))
         .with_state(Arc::new(Mutex::new(HashMap::new())));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
@@ -78,9 +85,19 @@ async fn tasks(
         return Redirect::to("/login").into_response();
     };
 
+    let mut sorted_tasks = tasks.iter().collect::<Vec<_>>();
+
+    sorted_tasks.sort_by_key(|val| val.1 .1);
+
     let mut context = Context::new();
 
-    context.insert("tasks", tasks);
+    context.insert(
+        "tasks",
+        &sorted_tasks
+            .iter()
+            .map(|(name, (done, _instant))| (name, done))
+            .collect::<Vec<_>>(),
+    );
 
     Html(TEMPLATES.render("index.html", &context).unwrap()).into_response()
 }
@@ -138,25 +155,17 @@ async fn add_task(
     match entry {
         Entry::Occupied(_) => return StatusCode::CONFLICT.into_response(),
         Entry::Vacant(vacant_entry) => {
-            vacant_entry.insert(false);
+            vacant_entry.insert((false, Instant::now()));
         }
     }
 
     drop(state);
 
-    Html(
-        TEMPLATES
-            .render(
-                "partials/task.html",
-                &Context::from_serialize(Task {
-                    name: &task_name.task,
-                    completed: false,
-                })
-                .unwrap(),
-            )
-            .unwrap(),
+    (
+        StatusCode::CREATED,
+        [("HX-Trigger", "reload-incompleted, clear-task-form")],
     )
-    .into_response()
+        .into_response()
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -183,19 +192,87 @@ async fn set_checked(
 
     let new_checked = !check_info.completed;
 
-    *tasks.get_mut(&check_info.name).unwrap() = new_checked;
+    let Some(task) = tasks.get_mut(&check_info.name) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
 
-    Html(
-        TEMPLATES
-            .render(
-                "partials/task.html",
-                &Context::from_serialize(Task {
-                    name: &check_info.name,
-                    completed: new_checked,
-                })
-                .unwrap(),
-            )
-            .unwrap(),
+    task.0 = new_checked;
+
+    (
+        StatusCode::OK,
+        [(
+            "HX-Trigger",
+            if new_checked {
+                "reload-completed"
+            } else {
+                "reload-incompleted"
+            },
+        )],
     )
-    .into_response()
+        .into_response()
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct TaskInfo {
+    completed: bool,
+}
+
+async fn get_tasks(
+    State(state): State<AppState>,
+    TypedHeader(cookies): TypedHeader<Cookie>,
+    Query(info): Query<TaskInfo>,
+) -> Response {
+    let mut state = state.lock().await;
+
+    let tasks = if let Some(tasks) = cookies
+        .get("TasksLoginName")
+        .and_then(|name| state.get_mut(name))
+    {
+        tasks
+    } else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+
+    let mut sorted_tasks = tasks
+        .iter()
+        .filter(|(_name, (done, _instant))| if info.completed { *done } else { !*done })
+        .collect::<Vec<_>>();
+
+    sorted_tasks.sort_by_key(|val| val.1 .1);
+
+    let data = sorted_tasks
+        .iter()
+        .map(|(name, (done, _time))| (name, *done))
+        .filter(|(_name, done)| if info.completed { *done } else { !*done })
+        .collect::<Vec<_>>();
+
+    let mut context = Context::new();
+
+    context.insert("complete", &info.completed);
+    context.insert("tasks", &data);
+
+    Html(TEMPLATES.render("partials/list.html", &context).unwrap()).into_response()
+}
+
+async fn delete_task(
+    State(state): State<AppState>,
+    TypedHeader(cookies): TypedHeader<Cookie>,
+    Form(check_info): Form<CheckedQuery>,
+) -> Response {
+    let mut state = state.lock().await;
+
+    let tasks = if let Some(tasks) = cookies
+        .get("TasksLoginName")
+        .and_then(|name| state.get_mut(name))
+    {
+        tasks
+    } else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+
+    if tasks.remove(&check_info.name).is_none() {
+        return StatusCode::NOT_MODIFIED.into_response();
+    }
+
+    (StatusCode::OK, [("HX-Trigger", "reload-completed")]).into_response()
 }
