@@ -1,9 +1,4 @@
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    net::SocketAddr,
-    sync::Arc,
-    time::Instant,
-};
+use std::collections::HashMap;
 
 use axum::{
     extract::{Query, State},
@@ -15,12 +10,10 @@ use axum::{
 };
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use sqlx::{types::Uuid, FromRow, PgPool};
 use tera::{Context, Tera};
-use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::{compression::CompressionLayer, services::ServeDir};
-
-type AppState = Arc<Mutex<HashMap<String, HashMap<String, (bool, Instant)>>>>;
 
 lazy_static! {
     pub static ref TEMPLATES: Tera = {
@@ -40,9 +33,38 @@ fn make_to_struct_json() -> impl tera::Function {
     )
 }
 
-#[tokio::main]
-async fn main() {
-    tracing_subscriber::fmt::init();
+#[shuttle_runtime::main]
+async fn main(#[shuttle_shared_db::Postgres] pool: PgPool) -> shuttle_axum::ShuttleAxum {
+    sqlx::query("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    sqlx::query(
+        "
+        CREATE TABLE IF NOT EXISTS users (
+            name VARCHAR(200) PRIMARY KEY
+        );
+        ",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "
+        CREATE TABLE IF NOT EXISTS tasks (
+            name VARCHAR(500) NOT NULL,
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            completed BOOL NOT NULL DEFAULT FALSE,
+            username VARCHAR(200) NOT NULL REFERENCES users (name) ON DELETE CASCADE,
+            created TIMESTAMP NOT NULL DEFAULT current_timestamp
+        );
+        ",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let app = Router::new()
         .route("/", get(tasks))
@@ -54,48 +76,33 @@ async fn main() {
         .route("/delete", delete(delete_task))
         .nest_service("/public", ServeDir::new("public"))
         .layer(ServiceBuilder::new().layer(CompressionLayer::new()))
-        .with_state(Arc::new(Mutex::new(HashMap::new())));
+        .with_state(pool.clone());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    tracing::info!("Listening on {}", addr);
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    Ok(app.into())
 }
 
 async fn login() -> Html<String> {
     Html(TEMPLATES.render("login.html", &Context::new()).unwrap())
 }
 
-async fn tasks(
-    State(state): State<AppState>,
-    TypedHeader(cookies): TypedHeader<Cookie>,
-) -> Response {
-    let state = state.lock().await;
-
-    let tasks = if let Some(tasks) = cookies
-        .get("TasksLoginName")
-        .and_then(|name| state.get(name))
-    {
-        tasks
+async fn tasks(State(db): State<PgPool>, TypedHeader(cookies): TypedHeader<Cookie>) -> Response {
+    let name = if let Some(name) = cookies.get("TasksLoginName") {
+        name
     } else {
         return Redirect::to("/login").into_response();
     };
 
-    let mut sorted_tasks = tasks.iter().collect::<Vec<_>>();
-
-    sorted_tasks.sort_by_key(|val| val.1 .1);
+    let tasks: Vec<(String, bool, Uuid)> = dbg!(sqlx::query_as(
+        "SELECT name, completed, id FROM tasks WHERE username = $1 ORDER BY created ASC",
+    )
+    .bind(name)
+    .fetch_all(&db)
+    .await
+    .unwrap());
 
     let mut context = Context::new();
 
-    context.insert(
-        "tasks",
-        &sorted_tasks
-            .iter()
-            .map(|(name, (done, _instant))| (name, done))
-            .collect::<Vec<_>>(),
-    );
+    context.insert("tasks", &tasks);
 
     Html(TEMPLATES.render("index.html", &context).unwrap()).into_response()
 }
@@ -105,12 +112,14 @@ struct NameQuery {
     name: String,
 }
 
-async fn submit(State(state): State<AppState>, Form(name): Form<NameQuery>) -> impl IntoResponse {
-    let mut state = state.lock().await;
+async fn submit(State(db): State<PgPool>, Form(name): Form<NameQuery>) -> impl IntoResponse {
+    sqlx::query("INSERT INTO users VALUES ($1) ON CONFLICT DO NOTHING")
+        .bind(&name.name)
+        .execute(&db)
+        .await
+        .unwrap();
 
-    state.entry(name.name.clone()).or_insert_with(HashMap::new);
-
-    drop(state);
+    drop(db);
 
     (
         [(
@@ -121,7 +130,7 @@ async fn submit(State(state): State<AppState>, Form(name): Form<NameQuery>) -> i
     )
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, FromRow)]
 struct Task<'a> {
     name: &'a str,
     completed: bool,
@@ -133,81 +142,79 @@ struct AddTaskQuery {
 }
 
 async fn add_task(
-    State(state): State<AppState>,
+    State(db): State<PgPool>,
     TypedHeader(cookies): TypedHeader<Cookie>,
     Form(task_name): Form<AddTaskQuery>,
 ) -> Response {
-    let mut state = state.lock().await;
-
-    let tasks = if let Some(tasks) = cookies
-        .get("TasksLoginName")
-        .and_then(|name| state.get_mut(name))
-    {
-        tasks
+    let name = if let Some(name) = cookies.get("TasksLoginName") {
+        name
     } else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
 
-    let entry = tasks.entry(task_name.task.clone());
+    let result = sqlx::query("INSERT INTO tasks (name, username) VALUES ($1, $2)")
+        .bind(task_name.task)
+        .bind(name)
+        .execute(&db)
+        .await
+        .unwrap();
 
-    match entry {
-        Entry::Occupied(_) => return StatusCode::CONFLICT.into_response(),
-        Entry::Vacant(vacant_entry) => {
-            vacant_entry.insert((false, Instant::now()));
-        }
+    if result.rows_affected() == 0 {
+        StatusCode::CONFLICT.into_response()
+    } else {
+        (
+            StatusCode::CREATED,
+            [("HX-Trigger", "reload-incompleted, clear-task-form")],
+        )
+            .into_response()
     }
-
-    drop(state);
-
-    (
-        StatusCode::CREATED,
-        [("HX-Trigger", "reload-incompleted, clear-task-form")],
-    )
-        .into_response()
 }
 
 #[derive(Deserialize, Serialize, Debug)]
 struct CheckedQuery {
-    name: String,
+    id: Uuid,
     completed: bool,
 }
 
 async fn set_checked(
-    State(state): State<AppState>,
+    State(db): State<PgPool>,
     TypedHeader(cookies): TypedHeader<Cookie>,
     Form(check_info): Form<CheckedQuery>,
 ) -> Response {
-    let mut state = state.lock().await;
-
-    let tasks = if let Some(tasks) = cookies
-        .get("TasksLoginName")
-        .and_then(|name| state.get_mut(name))
-    {
-        tasks
+    let name = if let Some(name) = cookies.get("TasksLoginName") {
+        name
     } else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
 
+    dbg!(&check_info);
+
     let new_checked = !check_info.completed;
 
-    let Some(task) = tasks.get_mut(&check_info.name) else {
-        return StatusCode::BAD_REQUEST.into_response();
-    };
+    let result = sqlx::query("UPDATE tasks SET completed = $1 WHERE username = $2 AND id = $3")
+        .bind(new_checked)
+        .bind(name)
+        .bind(dbg!(check_info.id))
+        .execute(&db)
+        .await
+        .unwrap();
 
-    task.0 = new_checked;
-
-    (
-        StatusCode::OK,
-        [(
-            "HX-Trigger",
-            if new_checked {
-                "reload-completed"
-            } else {
-                "reload-incompleted"
-            },
-        )],
-    )
-        .into_response()
+    if result.rows_affected() == 0 {
+        StatusCode::BAD_REQUEST.into_response()
+    } else {
+        (
+            StatusCode::OK,
+            [(
+                "HX-Trigger",
+                if new_checked {
+                    "reload-completed"
+                } else {
+                    "reload-incompleted"
+                },
+            )],
+        )
+            .into_response()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -216,61 +223,54 @@ struct TaskInfo {
 }
 
 async fn get_tasks(
-    State(state): State<AppState>,
+    State(db): State<PgPool>,
     TypedHeader(cookies): TypedHeader<Cookie>,
     Query(info): Query<TaskInfo>,
 ) -> Response {
-    let mut state = state.lock().await;
-
-    let tasks = if let Some(tasks) = cookies
-        .get("TasksLoginName")
-        .and_then(|name| state.get_mut(name))
-    {
-        tasks
+    let name = if let Some(name) = cookies.get("TasksLoginName") {
+        name
     } else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
 
-    let mut sorted_tasks = tasks
-        .iter()
-        .filter(|(_name, (done, _instant))| if info.completed { *done } else { !*done })
-        .collect::<Vec<_>>();
-
-    sorted_tasks.sort_by_key(|val| val.1 .1);
-
-    let data = sorted_tasks
-        .iter()
-        .map(|(name, (done, _time))| (name, *done))
-        .filter(|(_name, done)| if info.completed { *done } else { !*done })
-        .collect::<Vec<_>>();
+    let tasks: Vec<(String, bool, Uuid)> = sqlx::query_as(
+        "SELECT name, completed, id FROM tasks WHERE username = $1 ORDER BY created",
+    )
+    .bind(name)
+    .bind(info.completed)
+    .fetch_all(&db)
+    .await
+    .unwrap();
 
     let mut context = Context::new();
 
     context.insert("complete", &info.completed);
-    context.insert("tasks", &data);
+    context.insert("tasks", &tasks);
 
     Html(TEMPLATES.render("partials/list.html", &context).unwrap()).into_response()
 }
 
 async fn delete_task(
-    State(state): State<AppState>,
+    State(db): State<PgPool>,
     TypedHeader(cookies): TypedHeader<Cookie>,
     Form(check_info): Form<CheckedQuery>,
 ) -> Response {
-    let mut state = state.lock().await;
-
-    let tasks = if let Some(tasks) = cookies
-        .get("TasksLoginName")
-        .and_then(|name| state.get_mut(name))
-    {
-        tasks
+    let name = if let Some(name) = cookies.get("TasksLoginName") {
+        name
     } else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
 
-    if tasks.remove(&check_info.name).is_none() {
-        return StatusCode::NOT_MODIFIED.into_response();
-    }
+    let result = sqlx::query("DELETE FROM tasks WHERE username = $1 AND id = $2")
+        .bind(name)
+        .bind(check_info.id)
+        .execute(&db)
+        .await
+        .unwrap();
 
-    (StatusCode::OK, [("HX-Trigger", "reload-completed")]).into_response()
+    if result.rows_affected() == 0 {
+        return StatusCode::NOT_MODIFIED.into_response();
+    } else {
+        (StatusCode::OK, [("HX-Trigger", "reload-completed")]).into_response()
+    }
 }

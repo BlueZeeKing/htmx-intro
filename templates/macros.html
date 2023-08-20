@@ -17,7 +17,7 @@
     />
 {% endmacro input %}
 
-{% macro task(name, completed) %}
+{% macro task(name, completed, id) %}
     <li class="flex">
         <input
             type="checkbox"
@@ -30,7 +30,7 @@
 
             hx-put="/toggle"
             hx-trigger="change"
-            hx-vals="{{ to_struct_json(name=name, completed=completed) }}"
+            hx-vals="{{ to_struct_json(id=id, completed=completed) }}"
             hx-on="click: event.target.disabled = true"
 
             hx-swap="delete"
@@ -43,7 +43,7 @@
             hx-delete="/delete"
             hx-trigger="dblclick"
             hx-confirm="Are you sure you want to delete?"
-            hx-vals="{{ to_struct_json(name=name, completed=completed) }}"
+            hx-vals="{{ to_struct_json(id=id, completed=completed) }}"
             {% endif %}
         >
             {{name}}

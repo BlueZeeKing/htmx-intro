@@ -11,7 +11,7 @@
     <ul id="incomplete-list" hx-get="/tasks?completed=false" hx-trigger="reload-incompleted from:body" class="min-h-[15rem]">
         {% for task in tasks %}
             {% if not task.1 %}
-                {{ macros::task(name=task.0, completed=task.1) }}
+                {{ macros::task(name=task.0, completed=task.1, id=task.2) }}
             {% endif %}
         {% endfor %}
     </ul>
@@ -19,7 +19,7 @@
     <ul id="complete-list" hx-get="/tasks?completed=true" hx-trigger="reload-completed from:body" class="min-h-[15rem]">
         {% for task in tasks %}
             {% if task.1 %}
-                {{ macros::task(name=task.0, completed=task.1) }}
+                {{ macros::task(name=task.0, completed=task.1, id=task.2) }}
             {% endif %}
         {% endfor %}
     </ul>
