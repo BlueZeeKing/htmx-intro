@@ -40,7 +40,7 @@ impl FromRef<AppState> for PgPool {
 #[shuttle_runtime::main]
 async fn main(
     #[shuttle_shared_db::Postgres] pool: PgPool,
-    #[shuttle_static_folder::StaticFolder(folder = "public")] static_folder: PathBuf,
+    #[shuttle_static_folder::StaticFolder] static_folder: PathBuf,
 ) -> shuttle_axum::ShuttleAxum {
     sqlx::query("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
         .execute(&pool)
@@ -81,7 +81,7 @@ async fn main(
         .route("/toggle", put(set_checked))
         .route("/tasks", get(get_tasks))
         .route("/delete", delete(delete_task))
-        .nest_service("/public", ServeDir::new(static_folder))
+        .nest_service("/static", ServeDir::new(static_folder))
         .layer(ServiceBuilder::new().layer(CompressionLayer::new()))
         .with_state(AppState {
             db: pool,
