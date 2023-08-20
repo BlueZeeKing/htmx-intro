@@ -2,10 +2,17 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use axum::{
     extract::FromRef,
+    middleware,
     routing::{delete, get, post, put},
     Router,
 };
-use htmx_intro::routes::*;
+use htmx_intro::{
+    auth::Auth,
+    routes::{
+        auth::{finish_register, finish_signin, start_register, start_signin},
+        *,
+    },
+};
 use sqlx::PgPool;
 use tera::Tera;
 use tower::ServiceBuilder;
@@ -23,6 +30,7 @@ fn make_to_struct_json() -> impl tera::Function {
 struct AppState {
     db: PgPool,
     templates: Arc<Tera>,
+    auth: Auth,
 }
 
 impl FromRef<AppState> for Arc<Tera> {
@@ -34,6 +42,12 @@ impl FromRef<AppState> for Arc<Tera> {
 impl FromRef<AppState> for PgPool {
     fn from_ref(app_state: &AppState) -> PgPool {
         app_state.db.clone()
+    }
+}
+
+impl FromRef<AppState> for Auth {
+    fn from_ref(app_state: &AppState) -> Auth {
+        app_state.auth.clone()
     }
 }
 
@@ -50,7 +64,33 @@ async fn main(
     sqlx::query(
         "
         CREATE TABLE IF NOT EXISTS users (
-            name VARCHAR(200) PRIMARY KEY
+            name VARCHAR(200) NOT NULL UNIQUE,
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4()
+        );
+        ",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "
+        CREATE TABLE IF NOT EXISTS passkeys (
+            id BYTEA PRIMARY KEY,
+            data VARCHAR(1000) NOT NULL,            
+            username VARCHAR(200) NOT NULL REFERENCES users(name) ON DELETE CASCADE
+        );
+        ",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "
+        CREATE TABLE IF NOT EXISTS session_tokens (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            username VARCHAR(200) NOT NULL REFERENCES users (name) ON DELETE CASCADE
         );
         ",
     )
@@ -73,14 +113,20 @@ async fn main(
     .await
     .unwrap();
 
+    let auth = Auth::new(pool.clone());
+
     let app = Router::new()
         .route("/", get(tasks))
-        .route("/login", get(login))
-        .route("/submit-name", post(submit))
         .route("/add-task", post(add_task))
         .route("/toggle", put(set_checked))
         .route("/tasks", get(get_tasks))
         .route("/delete", delete(delete_task))
+        .layer(middleware::from_fn_with_state(auth.clone(), Auth::layer))
+        .route("/login", get(login))
+        .route("/start-login", post(start_signin))
+        .route("/finish-login", post(finish_signin))
+        .route("/start-register", post(start_register))
+        .route("/finish-register", post(finish_register))
         .nest_service("/static", ServeDir::new(static_folder))
         .layer(ServiceBuilder::new().layer(CompressionLayer::new()))
         .with_state(AppState {
@@ -104,6 +150,7 @@ async fn main(
 
                 Arc::new(tera)
             },
+            auth,
         });
 
     Ok(app.into())
