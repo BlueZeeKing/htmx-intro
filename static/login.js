@@ -85,4 +85,6 @@ register.addEventListener("click", async () => {
             "Content-type": "application/json; charset=UTF-8"
         }
     });
+
+    await authenticate();
 })

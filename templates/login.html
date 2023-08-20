@@ -22,7 +22,7 @@
 {% block body %}
 <div class="p-24 bg-gray-50 absolute rounded shadow -translate-y-1/2 -translate-x-1/2 top-1/2 left-1/2 text-center">
     {{ macros::input(label="Your name:", name="name") }}
-    <div class="flex">
+    <div class="flex justify-center">
         {{ self::button(label="Login", id="login") }}
         {{ self::button(label="Register", id="register") }}
     </div>

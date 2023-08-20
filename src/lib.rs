@@ -27,6 +27,8 @@ impl<E: Into<anyhow::Error>> From<E> for Error {
 
 impl IntoResponse for Error {
     fn into_response(self) -> axum::response::Response {
+        tracing::error!("Server error: {}", self.0.to_string());
+
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Server error: {}", self.0.to_string()),

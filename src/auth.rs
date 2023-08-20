@@ -122,20 +122,22 @@ struct SessionToken {
 
 impl Auth {
     pub fn new(db: PgPool) -> Self {
+        let url;
+
+        let builder = if cfg!(debug_assertions) {
+            url = Url::parse("http://localhost:8000/").unwrap();
+            WebauthnBuilder::new("localhost", &url)
+        } else {
+            url = Url::parse("https://htmx-intro.shuttleapp.rs/").unwrap();
+            WebauthnBuilder::new("htmx-intro.shuttleapp.rs", &url)
+        };
+
         Self {
             db,
             auth: AuthHandler {
                 registration_data: Arc::new(Mutex::new(HashMap::new())),
                 signin_data: Arc::new(Mutex::new(HashMap::new())),
-                website_data: Arc::new(
-                    WebauthnBuilder::new(
-                        "localhost",
-                        &Url::parse("http://localhost:8000").unwrap(),
-                    )
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-                ),
+                website_data: Arc::new(builder.unwrap().build().unwrap()),
             },
         }
     }
