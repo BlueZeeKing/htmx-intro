@@ -15,7 +15,7 @@ use htmx_intro::{
 };
 use sqlx::PgPool;
 use tower::ServiceBuilder;
-use tower_http::{compression::CompressionLayer, services::ServeDir};
+use tower_http::{compression::CompressionLayer, services::ServeDir, trace::TraceLayer};
 
 #[derive(Clone)]
 struct AppState {
@@ -111,7 +111,11 @@ async fn main(
         .route("/start-register", post(start_register))
         .route("/finish-register", post(finish_register))
         .nest_service("/static", ServeDir::new(static_folder))
-        .layer(ServiceBuilder::new().layer(CompressionLayer::new()))
+        .layer(
+            ServiceBuilder::new()
+                .layer(CompressionLayer::new())
+                .layer(TraceLayer::new_for_http()),
+        )
         .with_state(AppState { db: pool, auth });
 
     Ok(app.into())
