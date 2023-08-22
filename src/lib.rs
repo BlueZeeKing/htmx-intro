@@ -4,6 +4,7 @@ use sqlx::{types::Uuid, FromRow};
 
 pub mod auth;
 pub mod routes;
+pub mod templates;
 
 #[derive(Serialize, FromRow)]
 pub struct Task {

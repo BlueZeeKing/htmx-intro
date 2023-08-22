@@ -1,3 +1,41 @@
-{% import "macros.html" as macros %}
+<li class="flex">
+    <input
+        type="checkbox"
+        class="mr-2"
+        aria-labelledby="check or uncheck {{task.name}}"
 
-{{ macros::task(name=name, completed=completed, id=id) }}
+        {% if task.completed %}
+            checked
+        {% endif %}
+
+        hx-put="/toggle"
+        hx-trigger="change"
+
+        hx-on::after-request="this.parentElement.remove()"
+
+        hx-vals="{{task|json}}"
+
+        {% if task.completed %}
+            hx-target="#incomplete-list"
+        {% else %}
+            hx-target="#complete-list"
+        {% endif %}
+        hx-swap="innerHTML"
+    />
+    <p
+        class="{% if task.completed %}line-through decoration-black text-gray-400{% endif %}"
+
+        {% if task.completed %}
+            hx-delete="/delete"
+            hx-trigger="dblclick"
+            hx-confirm="Are you sure you want to delete?"
+
+            hx-vals="{{task|json}}"
+
+            hx-swap="delete"
+            hx-target="closest li"
+        {% endif %}
+    >
+        {{task.name}}
+    </p>
+</li>

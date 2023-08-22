@@ -7,54 +7,12 @@
             class="rounded bg-gray-200 m-2 px-4 p-2 outline-0 focus:outline-1 outline-offset-0 outline-gray-300"
         />
     </label>
-{% endmacro input %}
+{% endmacro %}
 
-{% macro submit(name="Submit") %}
+{% macro submit(name) %}
     <input
         type="submit"
         value={{name}}
         class="rounded bg-blue-500 text-white px-6 p-2 m-2 shadow hover:bg-blue-600 cursor-pointer"
     />
-{% endmacro input %}
-
-{% macro task(name, completed, id) %}
-    <li class="flex">
-        <input
-            type="checkbox"
-            class="mr-2"
-            aria-labelledby="check or uncheck {{name}}"
-
-            {% if completed %}
-                checked
-            {% endif %}
-
-            hx-put="/toggle"
-            hx-trigger="change"
-            hx-vals="{{ to_struct_json(id=id, completed=completed) }}"
-
-            hx-on::after-request="this.parentElement.remove()"
-
-            {% if completed %}
-                hx-target="#incomplete-list"
-            {% else %}
-                hx-target="#complete-list"
-            {% endif %}
-            hx-swap="innerHTML"
-        />
-        <p
-            class="{% if completed %}line-through decoration-black text-gray-400{% endif %}"
-
-            {% if completed %}
-                hx-delete="/delete"
-                hx-trigger="dblclick"
-                hx-confirm="Are you sure you want to delete?"
-                hx-vals="{{ to_struct_json(id=id, completed=completed) }}"
-
-                hx-swap="delete"
-                hx-target="closest li"
-            {% endif %}
-        >
-            {{name}}
-        </p>
-    </li>
-{% endmacro task %}
+{% endmacro %}

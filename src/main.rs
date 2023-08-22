@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 use axum::{
     extract::FromRef,
@@ -14,29 +14,13 @@ use htmx_intro::{
     },
 };
 use sqlx::PgPool;
-use tera::Tera;
 use tower::ServiceBuilder;
 use tower_http::{compression::CompressionLayer, services::ServeDir};
-
-fn make_to_struct_json() -> impl tera::Function {
-    Box::new(
-        move |args: &HashMap<String, serde_json::Value>| -> tera::Result<serde_json::Value> {
-            Ok(serde_json::Value::String(serde_json::to_string(args)?))
-        },
-    )
-}
 
 #[derive(Clone)]
 struct AppState {
     db: PgPool,
-    templates: Arc<Tera>,
     auth: Auth,
-}
-
-impl FromRef<AppState> for Arc<Tera> {
-    fn from_ref(app_state: &AppState) -> Arc<Tera> {
-        app_state.templates.clone()
-    }
 }
 
 impl FromRef<AppState> for PgPool {
@@ -128,33 +112,7 @@ async fn main(
         .route("/finish-register", post(finish_register))
         .nest_service("/static", ServeDir::new(static_folder))
         .layer(ServiceBuilder::new().layer(CompressionLayer::new()))
-        .with_state(AppState {
-            db: pool,
-            templates: {
-                let mut tera = Tera::default();
-
-                tera.add_raw_templates([
-                    ("base.html", include_str!("../templates/base.html")),
-                    ("macros.html", include_str!("../templates/macros.html")),
-                    (
-                        "partials/list.html",
-                        include_str!("../templates/partials/list.html"),
-                    ),
-                    (
-                        "partials/task.html",
-                        include_str!("../templates/partials/task.html"),
-                    ),
-                    ("index.html", include_str!("../templates/index.html")),
-                    ("login.html", include_str!("../templates/login.html")),
-                ])
-                .unwrap();
-
-                tera.register_function("to_struct_json", make_to_struct_json());
-
-                Arc::new(tera)
-            },
-            auth,
-        });
+        .with_state(AppState { db: pool, auth });
 
     Ok(app.into())
 }

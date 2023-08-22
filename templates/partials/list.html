@@ -1,5 +1,3 @@
-{% import "macros.html" as macros %}
-
 {% for task in tasks %}
-    {{ macros::task(name=task.0, completed=task.1, id=task.2) }}
+    {% include "partials/task.html" %}
 {% endfor %}

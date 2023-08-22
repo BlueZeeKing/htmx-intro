@@ -1,39 +1,25 @@
-use std::sync::Arc;
-
-use crate::{Result, Task, User};
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::{Html, IntoResponse, Response},
-    Extension, Form,
-};
+use crate::{templates, Result, Task, User};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Extension, Form};
 use serde::{Deserialize, Serialize};
 use sqlx::{types::Uuid, PgPool};
-use tera::{Context, Tera};
 
 pub mod auth;
 
-pub async fn login(State(templates): State<Arc<Tera>>) -> Result<Html<String>> {
-    Ok(Html(templates.render("login.html", &Context::new())?))
+pub async fn login() -> impl IntoResponse {
+    templates::Login {}
 }
 
 pub async fn tasks(
     State(db): State<PgPool>,
     Extension(user): Extension<User>,
-    State(templates): State<Arc<Tera>>,
-) -> Result<Response> {
-    let tasks: Vec<(String, bool, Uuid)> = sqlx::query_as(
-        "SELECT name, completed, id FROM tasks WHERE username = $1 ORDER BY created ASC",
-    )
-    .bind(user.name)
-    .fetch_all(&db)
-    .await?;
+) -> Result<impl IntoResponse> {
+    let tasks: Vec<Task> =
+        sqlx::query_as("SELECT * FROM tasks WHERE username = $1 ORDER BY created ASC")
+            .bind(user.name)
+            .fetch_all(&db)
+            .await?;
 
-    let mut context = Context::new();
-
-    context.insert("tasks", &tasks);
-
-    Ok(Html(templates.render("index.html", &context)?).into_response())
+    Ok(templates::Tasks { tasks })
 }
 
 #[derive(Deserialize)]
@@ -43,11 +29,10 @@ pub struct AddTaskQuery {
 
 pub async fn add_task(
     State(db): State<PgPool>,
-    State(templates): State<Arc<Tera>>,
     Extension(user): Extension<User>,
     Form(task_name): Form<AddTaskQuery>,
 ) -> Result<impl IntoResponse> {
-    let result: Task =
+    let task: Task =
         sqlx::query_as("INSERT INTO tasks (name, username) VALUES ($1, $2) RETURNING *")
             .bind(task_name.task)
             .bind(user.name)
@@ -56,7 +41,7 @@ pub async fn add_task(
 
     Ok((
         [("HX-Trigger", "clear-task-form")],
-        Html(templates.render("partials/task.html", &Context::from_serialize(result)?)?),
+        templates::Task { task },
     ))
 }
 
@@ -68,10 +53,9 @@ pub struct CheckedQuery {
 
 pub async fn set_checked(
     State(db): State<PgPool>,
-    State(templates): State<Arc<Tera>>,
     Extension(user): Extension<User>,
     Form(check_info): Form<CheckedQuery>,
-) -> Result<Response> {
+) -> Result<impl IntoResponse> {
     let new_checked = !check_info.completed;
 
     sqlx::query("UPDATE tasks SET completed = $1 WHERE username = $2 AND id = $3")
@@ -81,19 +65,15 @@ pub async fn set_checked(
         .execute(&db)
         .await?;
 
-    let tasks: Vec<(String, bool, Uuid)> = sqlx::query_as(
-        "SELECT name, completed, id FROM tasks WHERE username = $1 AND completed = $2 ORDER BY created",
+    let tasks: Vec<Task> = sqlx::query_as(
+        "SELECT * FROM tasks WHERE username = $1 AND completed = $2 ORDER BY created",
     )
     .bind(&user.name)
     .bind(new_checked)
     .fetch_all(&db)
     .await?;
 
-    let mut context = Context::new();
-
-    context.insert("tasks", &tasks);
-
-    Ok(Html(templates.render("partials/list.html", &context)?).into_response())
+    Ok(templates::List { tasks })
 }
 
 #[derive(Debug, Deserialize, Serialize)]

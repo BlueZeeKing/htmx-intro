@@ -8,10 +8,10 @@
     >
         {{label}}
     </button>
-{% endmacro button %}
+{% endmacro %}
 
 {% block head %}
-{{ super() }}
+{% call super() %}
 <script
     src="https://cdn.jsdelivr.net/npm/js-base64@3.7.4/base64.min.js"
     integrity="sha384-VkKbwLiG7C18stSGuvcw9W0BHk45Ba7P9LJG5c01Yo4BI6qhFoWSa9TQLNA6EOzI"
@@ -21,10 +21,10 @@
 
 {% block body %}
 <div class="p-24 bg-gray-50 absolute rounded shadow -translate-y-1/2 -translate-x-1/2 top-1/2 left-1/2 text-center">
-    {{ macros::input(label="Your name:", name="name") }}
+    {% call macros::input("Your name:", "name") %}
     <div class="flex justify-center">
-        {{ self::button(label="Login", id="login") }}
-        {{ self::button(label="Register", id="register") }}
+        {% call button("Login", "login") %}
+        {% call button("Register", "register") %}
     </div>
 </div>
 <script src="/static/login.js"></script>
