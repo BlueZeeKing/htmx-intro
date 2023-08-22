@@ -1,7 +1,7 @@
 <li class="flex">
     <input
         type="checkbox"
-        class="mr-2"
+        class="mr-2 my-auto"
         aria-labelledby="check or uncheck {{task.name}}"
 
         {% if task.completed %}
@@ -12,6 +12,7 @@
         hx-trigger="change"
 
         hx-on::after-request="this.parentElement.remove()"
+        onclick="this.disabled = true"
 
         hx-vals="{{task|json}}"
 
