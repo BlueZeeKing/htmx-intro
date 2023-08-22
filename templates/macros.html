@@ -31,19 +31,27 @@
             hx-put="/toggle"
             hx-trigger="change"
             hx-vals="{{ to_struct_json(id=id, completed=completed) }}"
-            hx-on="click: event.target.disabled = true"
 
-            hx-swap="delete"
-            hx-target="closest li"
+            hx-on::after-request="this.parentElement.remove()"
+
+            {% if completed %}
+                hx-target="#incomplete-list"
+            {% else %}
+                hx-target="#complete-list"
+            {% endif %}
+            hx-swap="innerHTML"
         />
         <p
             class="{% if completed %}line-through decoration-black text-gray-400{% endif %}"
 
             {% if completed %}
-            hx-delete="/delete"
-            hx-trigger="dblclick"
-            hx-confirm="Are you sure you want to delete?"
-            hx-vals="{{ to_struct_json(id=id, completed=completed) }}"
+                hx-delete="/delete"
+                hx-trigger="dblclick"
+                hx-confirm="Are you sure you want to delete?"
+                hx-vals="{{ to_struct_json(id=id, completed=completed) }}"
+
+                hx-swap="delete"
+                hx-target="closest li"
             {% endif %}
         >
             {{name}}

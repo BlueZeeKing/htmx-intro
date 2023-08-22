@@ -119,7 +119,6 @@ async fn main(
         .route("/", get(tasks))
         .route("/add-task", post(add_task))
         .route("/toggle", put(set_checked))
-        .route("/tasks", get(get_tasks))
         .route("/delete", delete(delete_task))
         .layer(middleware::from_fn_with_state(auth.clone(), Auth::layer))
         .route("/login", get(login))
@@ -140,6 +139,10 @@ async fn main(
                     (
                         "partials/list.html",
                         include_str!("../templates/partials/list.html"),
+                    ),
+                    (
+                        "partials/task.html",
+                        include_str!("../templates/partials/task.html"),
                     ),
                     ("index.html", include_str!("../templates/index.html")),
                     ("login.html", include_str!("../templates/login.html")),

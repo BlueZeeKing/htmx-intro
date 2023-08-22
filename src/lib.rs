@@ -6,9 +6,10 @@ pub mod auth;
 pub mod routes;
 
 #[derive(Serialize, FromRow)]
-pub struct Task<'a> {
-    name: &'a str,
+pub struct Task {
+    name: String,
     completed: bool,
+    id: Uuid,
 }
 
 #[derive(Serialize, FromRow, Clone)]

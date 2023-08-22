@@ -1,7 +1,5 @@
 {% import "macros.html" as macros %}
 
 {% for task in tasks %}
-    {% if task.1  == complete %}
-        {{ macros::task(name=task.0, completed=task.1, id=task.2) }}
-    {% endif %}
+    {{ macros::task(name=task.0, completed=task.1, id=task.2) }}
 {% endfor %}

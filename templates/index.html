@@ -8,7 +8,7 @@
         {{ macros::submit(name="Add") }}
     </form>
     <h1 class="mt-4 mb-2 text-lg">Incomplete</h1>
-    <ul id="incomplete-list" hx-get="/tasks?completed=false" hx-trigger="reload-incompleted from:body" class="min-h-[15rem]">
+    <ul id="incomplete-list" class="min-h-[15rem]">
         {% for task in tasks %}
             {% if not task.1 %}
                 {{ macros::task(name=task.0, completed=task.1, id=task.2) }}
@@ -16,7 +16,7 @@
         {% endfor %}
     </ul>
     <h2 class="mt-4 mb-2 text-lg">Complete</h2>
-    <ul id="complete-list" hx-get="/tasks?completed=true" hx-trigger="reload-completed from:body" class="min-h-[15rem]">
+    <ul id="complete-list" class="min-h-[15rem]">
         {% for task in tasks %}
             {% if task.1 %}
                 {{ macros::task(name=task.0, completed=task.1, id=task.2) }}
