@@ -1,4 +1,4 @@
-<li class="flex">
+<li class="flex task" style="view-transition-name: task-{{task.id}}">
     <input
         type="checkbox"
         class="mr-2 my-auto"
@@ -11,17 +11,12 @@
         hx-put="/toggle"
         hx-trigger="change"
 
-        hx-on::after-request="this.parentElement.remove()"
         onclick="this.disabled = true"
 
         hx-vals="{{task|json}}"
 
-        {% if task.completed %}
-            hx-target="#incomplete-list"
-        {% else %}
-            hx-target="#complete-list"
-        {% endif %}
-        hx-swap="innerHTML"
+        hx-target="#list"
+        hx-swap="innerHTML transition:true"
     />
     <p
         class="{% if task.completed %}line-through decoration-black text-gray-400{% endif %}"
@@ -33,7 +28,7 @@
 
             hx-vals="{{task|json}}"
 
-            hx-swap="delete"
+            hx-swap="delete transition:true"
             hx-target="closest li"
         {% endif %}
     >

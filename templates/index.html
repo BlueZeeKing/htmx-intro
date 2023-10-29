@@ -3,20 +3,17 @@
 
 {% block body %}
 <div class="p-4">
-    <form hx-post="/add-task" hx-target="#incomplete-list" hx-swap="beforeend" class="flex" hx-on="clear-task-form: event.target.reset()">
+    <form hx-post="/add-task" hx-target="#list" hx-swap="afterbegin transition:true" class="flex" hx-on="clear-task-form: event.target.reset()">
         {% call macros::input("Task name:", "task") %}
         {% call macros::submit("Add") %}
     </form>
-    <h1 class="mt-4 mb-2 text-lg">Incomplete</h1>
-    <ul id="incomplete-list" class="min-h-[15rem]">
+    <h1 class="mt-4 mb-2 text-lg">Todos</h1>
+    <ul id="list" class="min-h-[15rem]">
         {% for task in tasks %}
             {% if task.completed == false %}
                 {% include "partials/task.html" %}
             {% endif %}
         {% endfor %}
-    </ul>
-    <h2 class="mt-4 mb-2 text-lg">Complete</h2>
-    <ul id="complete-list" class="min-h-[15rem]">
         {% for task in tasks %}
             {% if task.completed %}
                 {% include "partials/task.html" %}

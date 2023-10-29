@@ -66,7 +66,7 @@ pub async fn set_checked(
         .await?;
 
     let tasks: Vec<Task> = sqlx::query_as(
-        "SELECT * FROM tasks WHERE username = $1 AND completed = $2 ORDER BY created",
+        "SELECT * FROM tasks WHERE username = $1 ORDER BY completed, created",
     )
     .bind(&user.name)
     .bind(new_checked)
